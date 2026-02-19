@@ -4,7 +4,7 @@ This repository provides a **one‑command** workflow for standing up a local
 Ollama service and preloading a _Llama 3.2 3B_ model.  It automates the
 following tasks:
 
-1. Verifies host dependencies (`git`, `docker`, `docker compose`, `curl`).
+1. Verifies host dependencies (`docker`, `docker compose`, `curl`) and confirms the Docker daemon is running.
 2. Checks for an NVIDIA GPU and enforces a minimum CUDA runtime version.
 3. Starts an Ollama Docker container with the API bound to
    `127.0.0.1:11434` by default to limit access to localhost.
@@ -65,12 +65,11 @@ time you run `docker compose up` or re‑run `install.sh`.
 
 Ollama exposes an unauthenticated HTTP API.  Changing `OLLAMA_HOST` to
 `0.0.0.0:11434` allows access from any network interface, which means any
-computer on your LAN can issue inference and model management requests.  An
-Ollama setup guide warns that opening network access introduces a security
-risk and recommends restricting access via network ACLs and never exposing the
-service directly to the internet【985146410256541†L258-L264】.  If you need
-remote access, consider placing a reverse proxy in front of the service and
-enabling authentication (e.g. HTTP basic auth or OAuth) and TLS encryption.
+computer on your LAN can issue inference and model management requests. Opening
+network access introduces risk and should only be done on trusted networks
+with firewall controls. If you need remote access, place a reverse
+proxy in front of the service and enable authentication (for example HTTP
+basic auth or OAuth) and TLS encryption.
 
 ## Managing the stack
 
@@ -90,10 +89,10 @@ docker compose down
 
 ## Troubleshooting
 
-* **Missing dependencies:** The installer will abort if `git`, `docker`,
-  `docker compose` or `curl` are missing.  Install these packages using your
-  distribution’s package manager (e.g. `apt install git docker.io
-  docker-compose curl`).
+* **Missing dependencies:** The installer will abort if `docker`,
+  `docker compose` or `curl` are missing, or if the Docker daemon is not
+  reachable. Install these packages using your distribution’s package manager
+  (e.g. `apt install docker.io docker-compose curl`) and start Docker.
 * **CUDA version too low:** If the detected CUDA runtime version is lower
   than `MIN_CUDA_VERSION` the installer will exit.  Update your NVIDIA
   drivers or run in CPU mode by setting `GPU_COUNT=0` in `.env`.
