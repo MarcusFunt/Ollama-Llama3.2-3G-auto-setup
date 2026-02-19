@@ -24,8 +24,35 @@ if [[ ! -f "$ENV_FILE" ]]; then
   fi
 fi
 
-# shellcheck disable=SC1090
-source "$ENV_FILE"
+# Load supported KEY=VALUE pairs from env file without executing code.
+load_env_file() {
+  local file="$1"
+  local line key value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+
+    if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      value="${BASH_REMATCH[2]}"
+      value="${value#${value%%[![:space:]]*}}"
+      if [[ "$value" =~ ^\"(.*)\"$ ]]; then
+        value="${BASH_REMATCH[1]}"
+      elif [[ "$value" =~ ^\'(.*)\'$ ]]; then
+        value="${BASH_REMATCH[1]}"
+      else
+        value="${value%%[[:space:]]#*}"
+      fi
+      printf -v "$key" '%s' "$value"
+      export "$key"
+    else
+      echo "WARNING: Ignoring unsupported line in $file: $line" >&2
+    fi
+  done <"$file"
+}
+
+load_env_file "$ENV_FILE"
 
 # Default values for variables if not set in .env
 : "${OLLAMA_MODEL:=llama3.2:3b}"
@@ -33,6 +60,11 @@ source "$ENV_FILE"
 : "${PORT:=11434}"
 : "${GPU_COUNT:=all}"
 : "${GPU_DEVICE_IDS:=}"
+
+if ! [[ "$PORT" =~ ^[0-9]+$ ]] || ((PORT < 1 || PORT > 65535)); then
+  echo "ERROR: PORT must be an integer between 1 and 65535 (got '$PORT')." >&2
+  exit 1
+fi
 
 # Check if a command exists on the host
 command_exists() {
@@ -47,7 +79,7 @@ version_ge() {
 }
 
 echo "==> Checking dependencies"
-for cmd in git docker curl; do
+for cmd in docker curl; do
   if ! command_exists "$cmd"; then
     echo "ERROR: Required command '$cmd' is not installed." >&2
     exit 1
@@ -55,12 +87,19 @@ for cmd in git docker curl; do
   echo " - $cmd: OK"
 done
 
+if ! docker info >/dev/null 2>&1; then
+  echo "ERROR: Docker daemon is not reachable. Please start Docker and retry." >&2
+  exit 1
+fi
+
+echo " - docker daemon: OK"
+
 # Determine which docker compose command to use
 if docker compose version >/dev/null 2>&1; then
-  compose_cmd="docker compose"
+  compose_cmd=(docker compose)
   echo " - docker compose: OK"
 elif command_exists docker-compose; then
-  compose_cmd="docker-compose"
+  compose_cmd=(docker-compose)
   echo " - docker-compose: OK"
 else
   echo "ERROR: docker compose (plugin or standalone) is required." >&2
@@ -68,9 +107,7 @@ else
 fi
 
 # GPU and CUDA detection
-GPU_AVAILABLE=false
 if command_exists nvidia-smi && [[ "$GPU_COUNT" != "0" ]]; then
-  GPU_AVAILABLE=true
   CUDA_VERSION="$(nvidia-smi --query-gpu=cuda_version --format=csv,noheader 2>/dev/null | head -n1 | tr -d ' ')"
   DRIVER_VERSION="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1 | tr -d ' ')"
   if [[ -z "$CUDA_VERSION" || "$CUDA_VERSION" == "N/A" ]]; then
@@ -92,13 +129,13 @@ else
 fi
 
 echo "==> Pulling container images"
-$compose_cmd pull
+"${compose_cmd[@]}" pull
 
 echo "==> Starting Ollama service"
-$compose_cmd up -d ollama
+"${compose_cmd[@]}" up -d ollama
 
 echo "==> Waiting for Ollama and pulling model (${OLLAMA_MODEL})"
-$compose_cmd run --rm model-init
+"${compose_cmd[@]}" run --rm model-init
 
 # Determine the host IP to display to the user
 if [[ -n "${HOST_IP:-}" ]]; then
@@ -112,6 +149,7 @@ else
   fi
 fi
 HOST="${HOST// /}"
+HOST="${HOST:-localhost}"
 
 echo ""
 echo "Setup complete."
