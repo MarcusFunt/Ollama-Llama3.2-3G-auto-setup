@@ -1,31 +1,25 @@
 services:
   ollama:
     image: ollama/ollama:${OLLAMA_VERSION:-latest}
-    # Remove container_name to avoid collisions when deploying multiple stacks
     restart: unless-stopped
     ports:
-      - "${PORT:-11434}:11434"
+      - "${HOST_BIND_IP:-127.0.0.1}:${PORT:-11434}:11434"
     environment:
-      # Bind the Ollama API to the specified address. Use 127.0.0.1:11434 to
-      # restrict access to the local host or 0.0.0.0:11434 to expose on the LAN.
-      OLLAMA_HOST: ${OLLAMA_HOST:-127.0.0.1:11434}
+      # Bind the Ollama API inside container. Keep this at 0.0.0.0 so other
+      # services (like model-init) can always reach Ollama over service DNS.
+      OLLAMA_HOST: ${OLLAMA_HOST:-0.0.0.0:11434}
       OLLAMA_KEEP_ALIVE: 24h
-      # Control which GPUs are visible inside the container. Leave blank or set
-      # to "all" to expose all GPUs; set to a comma‑separated list of IDs to
-      # restrict to specific devices.
       NVIDIA_VISIBLE_DEVICES: ${GPU_DEVICE_IDS:-all}
     volumes:
       - ollama-data:/root/.ollama
+    # Compose-native GPU request (widely supported by modern docker compose).
+    gpus: ${GPU_COUNT:-all}
+    # Compatibility fallback for engines that still rely on deploy.device reservations.
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              # Reserve the specified number of GPUs. Use `all` to reserve all
-              # GPUs or `0` to disable GPU reservation (CPU only). Note that
-              # some versions of Compose may not allow zero here; the
-              # NVIDIA_VISIBLE_DEVICES environment variable also controls
-              # visibility at runtime.
               count: ${GPU_COUNT:-all}
               capabilities: [gpu]
     healthcheck:
@@ -40,7 +34,6 @@ services:
       ollama:
         condition: service_healthy
     environment:
-      # Use the internal service name to communicate with the ollama service
       OLLAMA_HOST: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
     entrypoint:
@@ -48,7 +41,6 @@ services:
       - -c
       - |
         set -eu
-        # Wait for the API to be reachable before pulling the model
         until ollama list >/dev/null 2>&1; do
           echo "Waiting for Ollama API..."
           sleep 2
