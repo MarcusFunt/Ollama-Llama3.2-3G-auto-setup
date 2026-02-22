@@ -11,7 +11,7 @@ following tasks:
 4. Pulls a model (default `llama3.2:3b`) automatically via a helper
    container.
 5. Exposes the inference endpoint on your local network when configured via
-   the `OLLAMA_HOST` environment variable.
+   the `OLLAMA_BIND_ADDRESS` environment variable.
 
 ## Requirements
 
@@ -38,7 +38,7 @@ After setup:
 
 - **Local endpoint:** `http://localhost:11434`
 - **LAN endpoint:** `http://<your-host-ip>:11434` (if you override
-  `OLLAMA_HOST` to `0.0.0.0:11434`)
+  `OLLAMA_BIND_ADDRESS` to `0.0.0.0`)
 
 ## Configuration
 
@@ -51,9 +51,9 @@ run if it does not exist.
 | `OLLAMA_VERSION` | Docker image tag for the Ollama container | `latest` |
 | `OLLAMA_MODEL` | The model to preload (e.g. `llama3.2:3b`) | `llama3.2:3b` |
 | `MIN_CUDA_VERSION` | Minimum CUDA runtime version required | `12.0` |
-| `OLLAMA_HOST` | Address:port that the API binds to. Use `127.0.0.1:11434` to restrict to localhost or `0.0.0.0:11434` to allow LAN access | `127.0.0.1:11434` |
-| `HOST_IP` | Optional override of the IP advertised at the end of the installer | (auto‑detected) |
+| `OLLAMA_BIND_ADDRESS` | Address on the host that the API binds to. Use `127.0.0.1` to restrict to localhost or `0.0.0.0` to allow LAN access | `127.0.0.1` |
 | `PORT` | Host port to publish the service | `11434` |
+| `HOST_IP` | Optional override of the IP advertised at the end of the installer | (auto‑detected) |
 | `GPU_COUNT` | Number of GPUs to reserve in Docker Compose. Use `all` for all GPUs or `0` for CPU‑only | `all` |
 | `GPU_DEVICE_IDS` | Comma‑separated list of GPU device IDs exposed via the NVIDIA runtime | (blank) |
 
@@ -63,8 +63,8 @@ time you run `docker compose up` or re‑run `install.sh`.
 
 ## Security notes
 
-Ollama exposes an unauthenticated HTTP API.  Changing `OLLAMA_HOST` to
-`0.0.0.0:11434` allows access from any network interface, which means any
+Ollama exposes an unauthenticated HTTP API.  Changing `OLLAMA_BIND_ADDRESS` to
+`0.0.0.0` allows access from any network interface, which means any
 computer on your LAN can issue inference and model management requests. Opening
 network access introduces risk and should only be done on trusted networks
 with firewall controls. If you need remote access, place a reverse
