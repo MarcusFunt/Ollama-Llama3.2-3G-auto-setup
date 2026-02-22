@@ -1,27 +1,77 @@
 name: CI
 
 on:
-  pull_request:
   push:
-    branches: [main]
+  pull_request:
 
 jobs:
-  shell-and-compose:
+  docs-and-links:
+    name: Docs lint and link checks
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install tooling
+      - name: Lint markdown
+        uses: DavidAnson/markdownlint-cli2-action@v20
+        with:
+          globs: |
+            README.md
+            CONTRIBUTING.md
+
+      - name: Check markdown links
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: 'yes'
+          config-file: '.github/markdown-link-check.json'
+          file-path: './README.md,./CONTRIBUTING.md'
+
+      - name: Spell check
+        uses: crate-ci/typos@v1.30.3
+
+  shell-and-security:
+    name: Shell lint and secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run shellcheck
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: '.'
+          ignore_paths: '.git,.github'
+          additional_files: 'install.sh scripts/check-env-consistency.sh'
+
+      - name: Check shell formatting
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck shfmt
+          sudo apt-get install -y shfmt
+          shfmt -d -i 2 -ci install.sh scripts/check-env-consistency.sh
 
-      - name: shellcheck install.sh
-        run: shellcheck install.sh
+      - name: Scan for hardcoded secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: shfmt check install.sh
-        run: shfmt -d install.sh
+  compose-and-env:
+    name: Compose + env validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Validate docker compose config
+      - name: Install linters
+        run: |
+          python -m pip install --upgrade pip
+          pip install yamllint
+          curl -sSfL https://raw.githubusercontent.com/dotenv-linter/dotenv-linter/master/install.sh | sh -s -- -b "$HOME/.local/bin"
+
+      - name: Validate docker-compose config
         run: docker compose config
+
+      - name: Lint YAML
+        run: yamllint -c .yamllint docker-compose.yml .github/workflows/ci.yml
+
+      - name: Lint dotenv example
+        run: $HOME/.local/bin/dotenv-linter .env.example
+
+      - name: Check env variable consistency
+        run: ./scripts/check-env-consistency.sh
