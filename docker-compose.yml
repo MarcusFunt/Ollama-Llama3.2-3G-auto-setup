@@ -4,30 +4,13 @@ services:
     # Remove container_name to avoid collisions when deploying multiple stacks
     restart: unless-stopped
     ports:
-      - "${PORT:-11434}:11434"
+      - "${OLLAMA_BIND_ADDRESS:-127.0.0.1}:${PORT:-11434}:11434"
     environment:
-      # Bind the Ollama API to the specified address. Use 127.0.0.1:11434 to
-      # restrict access to the local host or 0.0.0.0:11434 to expose on the LAN.
-      OLLAMA_HOST: ${OLLAMA_HOST:-127.0.0.1:11434}
+      # Always listen on all interfaces inside the container
+      OLLAMA_HOST: 0.0.0.0
       OLLAMA_KEEP_ALIVE: 24h
-      # Control which GPUs are visible inside the container. Leave blank or set
-      # to "all" to expose all GPUs; set to a comma‑separated list of IDs to
-      # restrict to specific devices.
-      NVIDIA_VISIBLE_DEVICES: ${GPU_DEVICE_IDS:-all}
     volumes:
       - ollama-data:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              # Reserve the specified number of GPUs. Use `all` to reserve all
-              # GPUs or `0` to disable GPU reservation (CPU only). Note that
-              # some versions of Compose may not allow zero here; the
-              # NVIDIA_VISIBLE_DEVICES environment variable also controls
-              # visibility at runtime.
-              count: ${GPU_COUNT:-all}
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "sh", "-c", "ollama list >/dev/null 2>&1"]
       interval: 10s

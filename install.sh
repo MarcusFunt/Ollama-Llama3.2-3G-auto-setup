@@ -57,6 +57,7 @@ load_env_file "$ENV_FILE"
 # Default values for variables if not set in .env
 : "${OLLAMA_MODEL:=llama3.2:3b}"
 : "${MIN_CUDA_VERSION:=12.0}"
+: "${OLLAMA_BIND_ADDRESS:=127.0.0.1}"
 : "${PORT:=11434}"
 : "${GPU_COUNT:=all}"
 : "${GPU_DEVICE_IDS:=}"
@@ -107,6 +108,7 @@ else
 fi
 
 # GPU and CUDA detection
+USE_GPU=false
 if command_exists nvidia-smi && [[ "$GPU_COUNT" != "0" ]]; then
   CUDA_VERSION="$(nvidia-smi --query-gpu=cuda_version --format=csv,noheader 2>/dev/null | head -n1 | tr -d ' ')"
   DRIVER_VERSION="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1 | tr -d ' ')"
@@ -116,6 +118,13 @@ if command_exists nvidia-smi && [[ "$GPU_COUNT" != "0" ]]; then
     echo " - NVIDIA CUDA version: $CUDA_VERSION"
     if version_ge "$CUDA_VERSION" "$MIN_CUDA_VERSION"; then
       echo " - CUDA requirement >= ${MIN_CUDA_VERSION}: OK"
+      if docker info -f '{{.Runtimes}}' 2>/dev/null | grep -q nvidia; then
+        echo " - Docker NVIDIA runtime: OK"
+        USE_GPU=true
+      else
+        echo "WARNING: NVIDIA GPU detected but Docker 'nvidia' runtime is not configured."
+        echo "         See: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
+      fi
     else
       echo "ERROR: CUDA ${CUDA_VERSION} is below required ${MIN_CUDA_VERSION}" >&2
       exit 1
@@ -124,8 +133,26 @@ if command_exists nvidia-smi && [[ "$GPU_COUNT" != "0" ]]; then
   if [[ -n "$DRIVER_VERSION" ]]; then
     echo " - NVIDIA driver version: $DRIVER_VERSION"
   fi
+fi
+
+if [[ "$USE_GPU" == "true" ]]; then
+  echo "==> Configuring GPU support (docker-compose.override.yml)"
+  cat <<EOF >docker-compose.override.yml
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${GPU_COUNT:-all}
+              capabilities: [gpu]
+    environment:
+      NVIDIA_VISIBLE_DEVICES: ${GPU_DEVICE_IDS:-all}
+EOF
 else
-  echo "WARNING: nvidia-smi not found or GPU_COUNT=0. Continuing with CPU-only fallback."
+  echo "==> Continuing with CPU-only mode"
+  rm -f docker-compose.override.yml
 fi
 
 echo "==> Pulling container images"
@@ -154,7 +181,11 @@ HOST="${HOST:-localhost}"
 echo ""
 echo "Setup complete."
 echo "Inference endpoint (local):  http://localhost:${PORT}"
-echo "Inference endpoint (LAN):    http://${HOST}:${PORT}"
+if [[ "$OLLAMA_BIND_ADDRESS" == "0.0.0.0" ]]; then
+  echo "Inference endpoint (LAN):    http://${HOST}:${PORT}"
+elif [[ "$OLLAMA_BIND_ADDRESS" != "127.0.0.1" ]]; then
+  echo "Inference endpoint (Bind):   http://${OLLAMA_BIND_ADDRESS}:${PORT}"
+fi
 echo ""
 echo "Example request:"
 echo "curl http://localhost:${PORT}/api/generate -d '{\"model\":\"${OLLAMA_MODEL}\",\"prompt\":\"Hello\"}'"
